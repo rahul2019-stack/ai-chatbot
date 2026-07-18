@@ -1,5 +1,7 @@
-import requests
+
 import time
+
+import requests
 
 # single_prompt_url = "http://localhost:11434/api/generate"
 chat_url = "http://localhost:11434/api/chat"
