@@ -10,43 +10,81 @@ from openpyxl.styles import (
 )
 from openpyxl.utils import get_column_letter
 
-def create_excel_sheet(env, app, department, bastion_node_ips, bootstrap_node_ips, master_node_ips, worker_node_ips, infra_node_ips, vip1, vip2):
+def create_excel_sheet(env, app, department, bastion_node_ips, bootstrap_node_ips, master_node_ips, worker_node_ips, infra_node_ips, vip1, vip2, dns_name):
     description_df = _form_description_data_df(env, app, department, bastion_node_ips, bootstrap_node_ips, master_node_ips, worker_node_ips, infra_node_ips, vip1, vip2)
-    lb_df = _form_lb_data_df(env, app, department, bootstrap_node_ips, master_node_ips, infra_node_ips)
-    with pd.ExcelWriter("far.xlsx") as writer:
+    excel_file_name = f"far_{department}_{env}_{app}.xlsx"
+    lb_df = _form_lb_data_df(env, app, department, bootstrap_node_ips, master_node_ips, infra_node_ips, dns_name)
+    dns_entries_df = _form_dns_entries_df(env, app, department, bootstrap_node_ips, master_node_ips, infra_node_ips, worker_node_ips, bastion_node_ips, vip1, vip2, dns_name)
+
+    with pd.ExcelWriter(excel_file_name) as writer:
         description_df.to_excel(writer, sheet_name="Description", index=False)
         lb_df.to_excel(writer, sheet_name="LB_Details", index=False)
+        dns_entries_df.to_excel(writer, sheet_name="DNS_Entry", index=False)
+
     _format_sheet(
-        excel_file="far.xlsx",
+        excel_file=excel_file_name,
         sheet_name="LB_Details",
         merge_columns=["A"]
     )
     _format_sheet(
-        excel_file="far.xlsx",
+        excel_file=excel_file_name,
         sheet_name="Description"
     )
+    _format_sheet(
+        excel_file=excel_file_name,
+        sheet_name="DNS_Entry"
+    )
+
+def _form_dns_entries_df(env, app, department, bootstrap_node_ips, master_node_ips, infra_node_ips, worker_node_ips, bastion_node_ips, vip1, vip2, dns_name):
+    total_vms = len(bootstrap_node_ips) + len(master_node_ips) + len(infra_node_ips) + len(worker_node_ips) + len(bastion_node_ips)
+    serials = list(range(1, total_vms+4))  # +4 for VIP1, VIP1 ,VIP2, and one extra to account for the starting index of 1
+    Vm_names = ["VIP1", "VIP1", "VIP2"]
+    Vm_names.extend(["AO to fillup"] * total_vms)
+    ip_address = [vip1, vip1, vip2]
+    for ip in bootstrap_node_ips:
+        ip_address.append(ip)
+    for ip in bastion_node_ips:
+        ip_address.append(ip)
+    for ip in master_node_ips:
+        ip_address.append(ip)
+    for ip in infra_node_ips:
+        ip_address.append(ip)
+    for ip in worker_node_ips:
+        ip_address.append(ip)
+    backend_dns = [f"api.{dns_name}.bank.sbi", f"api.{dns_name}.bank.sbi", f"*.apps.{dns_name}.bank.sbi"]
+    bootstrap_dns = f"bootstrap.{dns_name}.bank.sbi"
+    backend_dns.extend([bootstrap_dns])
+    for i in range(len(bastion_node_ips)):
+        if len(bastion_node_ips) == 1:
+            backend_dns.append(f"bastion.{dns_name}.bank.sbi")
+        else:
+            backend_dns.append(f"bastion{i+1}.{dns_name}.bank.sbi")
+    for i in range(len(master_node_ips)):
+        backend_dns.append(f"master{i+1}.{dns_name}.bank.sbi")
+    for i in range(len(infra_node_ips)):
+        backend_dns.append(f"infra{i+1}.{dns_name}.bank.sbi")
+    for i in range(len(worker_node_ips)):
+        backend_dns.append(f"worker{i+1}.{dns_name}.bank.sbi")
+
+    data = {
+        "Sr.No": serials,
+        "VM Name": Vm_names,
+        "DNS Entry": backend_dns,
+        "IP Address": ip_address
+    }
+
+    print(f"Data formed for DNS entries is {data}")
+
+    return pd.DataFrame(data)
 
 def _format_sheet(
     excel_file,
     sheet_name,
     merge_columns=None
 ):
-    """
-    Formats an Excel worksheet.
-
-    Args:
-        excel_file (str): Path to Excel file.
-        sheet_name (str): Name of worksheet.
-        merge_columns (list): List of Excel column letters to merge.
-                              Example: ["A", "B"]
-    """
 
     wb = load_workbook(excel_file)
     ws = wb[sheet_name]
-
-    # -------------------------
-    # Header Formatting
-    # -------------------------
 
     header_font = Font(bold=True)
 
@@ -78,10 +116,6 @@ def _format_sheet(
         for cell in row:
             cell.border = thin_border
 
-    # -------------------------
-    # Merge Duplicate Cells
-    # -------------------------
-
     if merge_columns:
 
         for column in merge_columns:
@@ -108,10 +142,6 @@ def _format_sheet(
 
                 start_row = end_row + 1
 
-    # -------------------------
-    # Auto Column Width
-    # -------------------------
-
     for column in ws.columns:
 
         max_length = 0
@@ -131,17 +161,13 @@ def _format_sheet(
 
     wb.save(excel_file)
 
-def _form_lb_data_df(env, app, department, bootstrap_node_ips, master_node_ips, infra_node_ips):
+def _form_lb_data_df(env, app, department, bootstrap_node_ips, master_node_ips, infra_node_ips, dns_name):
     total_bootstrap_and_master_nodes = len(bootstrap_node_ips) + len(master_node_ips)
     total_infra_nodes = len(infra_node_ips)
     total_master_nodes = len(master_node_ips)
-    api_server = f"api.{app}{env}.bank.sbi"
-    api_int_server = f"api-int.{app}{env}.bank.sbi"
-    apps_server = f"*.apps.{app}{env}.bank.sbi"
-
-    bootstrap_dns = f"bootstrap.{app}{env}.bank.sbi"
-    master_dns = f"master.{app}{env}.bank.sbi"
-    infra_dns = f"infra.{app}{env}.bank.sbi"
+    api_server = f"api.{dns_name}.bank.sbi"
+    api_int_server = f"api-int.{dns_name}.bank.sbi"
+    apps_server = f"*.apps.{dns_name}.bank.sbi"
 
     front_back_end_port = []
     front_back_end_port.extend(['6443'] * total_bootstrap_and_master_nodes)
@@ -155,11 +181,15 @@ def _form_lb_data_df(env, app, department, bootstrap_node_ips, master_node_ips, 
 
     # backend_dns = [bootstrap_dns, master_dns * total_master_nodes, bootstrap_dns, master_dns * total_master_nodes, infra_dns * total_infra_nodes]
     backend_dns = []
+    bootstrap_dns = f"bootstrap.{dns_name}.bank.sbi"
     backend_dns.extend([bootstrap_dns])
-    backend_dns.extend([master_dns] * total_master_nodes)
+    for i in range(total_master_nodes):
+        backend_dns.append(f"master{i+1}.{dns_name}.bank.sbi")
     backend_dns.extend([bootstrap_dns])
-    backend_dns.extend([master_dns] * total_master_nodes)
-    backend_dns.extend([infra_dns] * total_infra_nodes)
+    for i in range(total_master_nodes):
+        backend_dns.append(f"master{i+1}.{dns_name}.bank.sbi")
+    for i in range(total_infra_nodes):
+        backend_dns.append(f"infra{i+1}.{dns_name}.bank.sbi")
 
     data = {
         "FrontEnd": front_end_list,
@@ -183,23 +213,23 @@ def _form_description_data_df(env, app, department, bastion_node_ips, bootstrap_
         if len(bootstrap_node_ips) == 1:
             node_ips += f" Bootstrap {node_ip}\n"
         else:
-            node_ips += f" Bootstrap {i} {node_ip}\n"
+            node_ips += f" Bootstrap{i} {node_ip}\n"
     for i, node_ip in enumerate(master_node_ips, start=1):
         if len(master_node_ips) == 1:
             node_ips += f" Master {node_ip}\n"
         else:
-            node_ips += f" Master {i} {node_ip}\n"
+            node_ips += f" Master{i} {node_ip}\n"
     for i, node_ip in enumerate(worker_node_ips, start=1):
         if len(worker_node_ips) == 1:
             node_ips += f" Worker {node_ip}\n"
         else:
-            node_ips += f" Worker {i} {node_ip}\n"
+            node_ips += f" Worker{i} {node_ip}\n"
     if len(infra_node_ips) > 0:
         for i, node_ip in enumerate(infra_node_ips, start=1):
             if len(infra_node_ips) == 1:
                 node_ips += f" Infra {node_ip}\n"
             else:
-                node_ips += f" Infra {i} {node_ip}\n"
+                node_ips += f" Infra{i} {node_ip}\n"
 
     if env.lower() == "uat" or env.lower() == "pre-prod" or env.lower() == "dev":
         node_ips += f" Central Bastion {config_dict['central_meghdoot_bastion_node_ip_uat']}\n"
@@ -207,7 +237,7 @@ def _form_description_data_df(env, app, department, bastion_node_ips, bootstrap_
     else:
         node_ips += f" Central Bastion {config_dict['central_meghdoot_bastion_node_ip_prod']}\n"
         node_ips += f" Central Mirror {config_dict['central_meghdoot_mirror_node_ip_prod']}\n"
-    print(f"Node  string formed is {node_ips}")
+
     vip_str = f"VIP1: {vip1}\nVIP2: {vip2}"
     ldap_ip_str = "\n".join(config_dict["LDAP_ip"])
     ntp_ip_str = "\n".join(config_dict["NTP_ip"])
