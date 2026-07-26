@@ -11,15 +11,16 @@ from openpyxl.styles import (
 from openpyxl.utils import get_column_letter
 
 def create_excel_sheet(env, app, department, bastion_node_ips, bootstrap_node_ips, master_node_ips, worker_node_ips, infra_node_ips, vip1, vip2, dns_name):
-    description_df = _form_description_data_df(env, app, department, bastion_node_ips, bootstrap_node_ips, master_node_ips, worker_node_ips, infra_node_ips, vip1, vip2)
     excel_file_name = f"far_{department}_{env}_{app}.xlsx"
+    description_df = _form_description_data_df(env, app, department, bastion_node_ips, bootstrap_node_ips, master_node_ips, worker_node_ips, infra_node_ips, vip1, vip2)
     lb_df = _form_lb_data_df(env, app, department, bootstrap_node_ips, master_node_ips, infra_node_ips, dns_name)
     dns_entries_df = _form_dns_entries_df(env, app, department, bootstrap_node_ips, master_node_ips, infra_node_ips, worker_node_ips, bastion_node_ips, vip1, vip2, dns_name)
-
+    far_entries_df = _form_far_entries_df(env, app, department, bastion_node_ips, bootstrap_node_ips, master_node_ips, worker_node_ips, infra_node_ips, vip1, vip2, dns_name)
     with pd.ExcelWriter(excel_file_name) as writer:
         description_df.to_excel(writer, sheet_name="Description", index=False)
         lb_df.to_excel(writer, sheet_name="LB_Details", index=False)
         dns_entries_df.to_excel(writer, sheet_name="DNS_Entry", index=False)
+        far_entries_df.to_excel(writer, sheet_name="FAR_Rules", index=False)
 
     _format_sheet(
         excel_file=excel_file_name,
@@ -34,7 +35,143 @@ def create_excel_sheet(env, app, department, bastion_node_ips, bootstrap_node_ip
         excel_file=excel_file_name,
         sheet_name="DNS_Entry"
     )
+    _format_sheet(
+        excel_file=excel_file_name,
+        sheet_name="FAR_Rules"
+    )
 
+def _form_far_entries_df(env, app, department, bastion_node_ips, bootstrap_node_ips, master_node_ips, worker_node_ips, infra_node_ips, vip1, vip2, dns_name):
+    serial_number = list(range(1, 21))
+
+    if env.lower() == "uat" or env.lower() == "pre-prod" or env.lower() == "dev":
+        central_bastion_ip = config_dict["central_meghdoot_bastion_node_ip_uat"]
+        central_mirror_ip = config_dict["central_meghdoot_mirror_node_ip_uat"]
+    else:
+        central_bastion_ip = config_dict["central_meghdoot_bastion_node_ip_prod"]
+        central_mirror_ip = config_dict["central_meghdoot_mirror_node_ip_prod"]
+    meghdoot_central_nodes = f"{central_bastion_ip}\n{central_mirror_ip}"
+    
+    source_ip_rule_1_list = [
+        "\n".join(bootstrap_node_ips),
+        "\n".join(bastion_node_ips),
+        "\n".join(master_node_ips),
+        "\n".join(infra_node_ips),
+        "\n".join(worker_node_ips),
+        meghdoot_central_nodes
+    ]
+    source_ip_rule_1 = "\n".join(source_ip_rule_1_list)
+    destination_ip_rule_1 = "\n".join(source_ip_rule_1_list)
+    service_ports1 = [
+        "TCP/1936",
+        "TCP/9000-9999",
+        "TCP/10249-10259",
+        "TCP/10256",
+        "TCP/30000-32767",
+        "UDP/30000-32767",
+        "UDP/30000-32767",
+        "UDP/4789",
+        "UDP/4500",
+        "UDP/500",
+        "UDP/6081",
+        "UDP/9000-9999",
+    ]
+    service_rule_1 = "\n".join(service_ports1)
+
+    source_ip_rule_2 = "\n".join(source_ip_rule_1_list)
+    destination_ip_rule_list = [
+        "\n".join(bootstrap_node_ips),
+        "\n".join(master_node_ips)
+    ]
+    destination_ip_rule_2 = "\n".join(destination_ip_rule_list)
+    service_rule_2 = "TCP/6443"
+
+    source_ip_rule_3_list = [
+        "\n".join(bootstrap_node_ips),
+        "\n".join(master_node_ips)
+    ]
+    source_ip_rule_3 = "\n".join(source_ip_rule_3_list)
+    destination_ip_rule_3 = "\n".join(source_ip_rule_3_list)
+    service_rule_3 = "TCP/2379-2380"
+
+    source_ip_rule_4_list = [
+        "\n".join(bootstrap_node_ips),
+        "\n".join(master_node_ips),
+        "\n".join(infra_node_ips),
+        "\n".join(worker_node_ips),
+        "\n".join(bastion_node_ips),
+        central_bastion_ip
+    ]
+    source_ip_rule_4 = "\n".join(source_ip_rule_4_list)
+    destination_ip_rule_4 =f"{central_mirror_ip}"
+    service_rule_4 = "TCP/8443"
+
+    source_ip_rule_5_list = [
+        "\n".join(bastion_node_ips),
+        "\n".join(bootstrap_node_ips),
+        "\n".join(master_node_ips),
+        "\n".join(infra_node_ips),
+        "\n".join(worker_node_ips),
+        central_mirror_ip
+    ]
+    source_ip_rule_5 = "\n".join(source_ip_rule_5_list)
+    destination_ip_rule_5_list = [
+        central_bastion_ip,
+        "\n".join(bastion_node_ips)
+    ]
+    destination_ip_rule_5 = "\n".join(destination_ip_rule_5_list)
+    service_rule_5 = "9090/TCP \n8080/TCP"
+
+    source_ip_rule_6 = "\n".join(source_ip_rule_1_list)
+    destination_ip_rule_6 = vip1
+    service_rule_6 = "6443/TCP \n22623/TCP"
+
+    source_ip_rule_7 = "\n".join(source_ip_rule_1_list)
+    destination_ip_rule_7 = vip2
+    service_rule_7 = "443/TCP"
+
+    # To allow comm between VIP1 API server to bootstrap and master nodes
+    source_ip_rule_8 = vip1
+    destination_ip_rule_8_list = [
+        "\n".join(bootstrap_node_ips)
+        "\n".join(master_node_ips)
+    ]
+    destination_ip_rule_8 = "\n".join(destination_ip_rule_8_list)
+    service_rule_8 = "6443/TCP \n22623/TCP"
+
+    # To allow comm between *apps VIP2 to infra nodes, if no infra nodes are there traffic should go to master nodes
+    source_ip_rule_9 = vip2
+    destination_ip_rule_9_list = []
+    if len(infra_node_ips) == 0:
+        destination_ip_rule_9_list.append("\n".join(bootstrap_node_ips))
+        destination_ip_rule_9_list.append("\n".join(master_node_ips))
+    else:
+        destination_ip_rule_9_list.append("\n".join(infra_node_ips))
+    service_rule_9 = "TCP/443"
+
+
+
+    
+    data = {
+        "Sr.No": list(range(7)),
+        "Source IP Address": [source_ip_rule_1, source_ip_rule_2, source_ip_rule_3, source_ip_rule_4, source_ip_rule_5,
+                              source_ip_rule_6, source_ip_rule_7],
+        "User": ["Any", "Any", "Any", "Any", "Any", "Any", "Any"],
+        "Destination IP Address": [destination_ip_rule_1, destination_ip_rule_2, destination_ip_rule_3, destination_ip_rule_4, destination_ip_rule_5,
+                                   destination_ip_rule_6, destination_ip_rule_7],
+        "Application": ["Any", "Any", "Any", "Any", "Any", "Any", "Any"],
+        "Service": [service_rule_1, service_rule_2, service_rule_3, service_rule_4, service_rule_5, service_rule_6, service_rule_7],
+        "Action": ["Allow", "Allow", "Allow", "Allow", "Allow", "Allow", "Allow"],
+        "Comment": ["This rule allows all traffic between the OpenShift nodes and the central bastion/mirror nodes.", 
+                    "This rule allows traffic from the OpenShift nodes to the API server on the bootstrap and master nodes.", 
+                    "This rule allows ETCD sync traffic between the bootstrap and master nodes.",
+                    "Allow all nodes to pull container images from central mirror",
+                    "Bastion node hosts the ignition config files and this rule is needed at the time of cluster installation to download ignition configs while creating RHCOS VMs",
+                    "To connect API and API-Int url from all OCP nodes",
+                    "To connect *.apps from all OCP nodes"],
+        "Remarks": ["", "", "", "", "", "", ""]
+    }
+    print(f"FAR rule data formed is {data}")
+    return pd.DataFrame(data)
 def _form_dns_entries_df(env, app, department, bootstrap_node_ips, master_node_ips, infra_node_ips, worker_node_ips, bastion_node_ips, vip1, vip2, dns_name):
     total_vms = len(bootstrap_node_ips) + len(master_node_ips) + len(infra_node_ips) + len(worker_node_ips) + len(bastion_node_ips)
     serials = list(range(1, total_vms+4))  # +4 for VIP1, VIP1 ,VIP2, and one extra to account for the starting index of 1
