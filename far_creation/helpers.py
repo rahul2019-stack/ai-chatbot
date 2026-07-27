@@ -40,9 +40,31 @@ def create_excel_sheet(env, app, department, bastion_node_ips, bootstrap_node_ip
         excel_file=excel_file_name,
         sheet_name="FAR_Rules"
     )
+    return "Excel sheet created successfully"
 
 def _form_far_entries_df(env, app, department, bastion_node_ips, bootstrap_node_ips, master_node_ips, worker_node_ips, infra_node_ips, vip1, vip2, dns_name, vcentre_name):
-    serial_number = list(range(1, 21))
+    rules = [
+        "This rule allows all traffic between the OpenShift nodes and the central bastion/mirror nodes.", 
+        "This rule allows traffic from the OpenShift nodes to the API server on the bootstrap and master nodes.", 
+        "This rule allows ETCD sync traffic between the bootstrap and master nodes.",
+        "Allow all nodes to pull container images from central mirror",
+        "Bastion node hosts the ignition config files and this rule is needed at the time of cluster installation to download ignition configs while creating RHCOS VMs",
+        "To connect API and API-Int url from all OCP nodes",
+        "To connect *.apps from all OCP nodes",
+        "To allow comm between VIP1 API server to bootstrap and master nodes",
+        "To allow comm between *apps VIP2 to infra nodes, if no infra nodes are there traffic should go to master nodes",
+        "To allow communication from cluster nodes to respective vcentre/vsphere",
+        "To allow SSH login to all cluster nodes from bastion nodes",
+        "For clock sync among all OCP nodes with NTP servers",
+        "Send openshift alerts from all OCP nodes to mailbox",
+        "To allow all communication from all nodes to all cluster nodes to forward logs",
+        "To allow all nodes to access NFS storage",
+        "Openshift platform authentication from AD",
+        "SSH login to bastion nodes",
+        "SSH login to miiror node",
+        "To access web console of app from OCP Admin team's desktop",
+        "For loki and quay setup"
+    ]
 
     if env.lower() == "uat" or env.lower() == "pre-prod" or env.lower() == "dev":
         central_bastion_ip = config_dict["central_meghdoot_bastion_node_ip_uat"]
@@ -133,13 +155,12 @@ def _form_far_entries_df(env, app, department, bastion_node_ips, bootstrap_node_
     # To allow comm between VIP1 API server to bootstrap and master nodes
     source_ip_rule_8 = vip1
     destination_ip_rule_8_list = [
-        "\n".join(bootstrap_node_ips)
+        "\n".join(bootstrap_node_ips),
         "\n".join(master_node_ips)
     ]
     destination_ip_rule_8 = "\n".join(destination_ip_rule_8_list)
     service_rule_8 = "TCP/6443 \nTCP/22623"
 
-    # To allow comm between *apps VIP2 to infra nodes, if no infra nodes are there traffic should go to master nodes
     source_ip_rule_9 = vip2
     destination_ip_rule_9_list = []
     if len(infra_node_ips) == 0:
@@ -224,10 +245,8 @@ def _form_far_entries_df(env, app, department, bastion_node_ips, bootstrap_node_
     service_rule_20 = "TCP/443"
 
 
-
-
     data = {
-        "Sr.No": list(range(21)),
+        "Sr.No": list(range(1,len(rules)+1)),
         "Source IP Address": [source_ip_rule_1, source_ip_rule_2, source_ip_rule_3, source_ip_rule_4, source_ip_rule_5,
                               source_ip_rule_6, source_ip_rule_7, source_ip_rule_8, source_ip_rule_9, source_ip_rule_10,
                               source_ip_rule_11, source_ip_rule_12, source_ip_rule_13, source_ip_rule_14, source_ip_rule_15,
@@ -246,26 +265,25 @@ def _form_far_entries_df(env, app, department, bastion_node_ips, bootstrap_node_
                     service_rule_15, service_rule_16, service_rule_17, service_rule_18, service_rule_19, service_rule_20],
         "Action": ["Allow", "Allow", "Allow", "Allow", "Allow", "Allow", "Allow", "Allow", "Allow", "Allow", "Allow", "Allow", "Allow",
                    "Allow", "Allow", "Allow", "Allow", "Allow", "Allow", "ALlow"],
-        "Comment": ["This rule allows all traffic between the OpenShift nodes and the central bastion/mirror nodes.", 
-                    "This rule allows traffic from the OpenShift nodes to the API server on the bootstrap and master nodes.", 
-                    "This rule allows ETCD sync traffic between the bootstrap and master nodes.",
-                    "Allow all nodes to pull container images from central mirror",
-                    "Bastion node hosts the ignition config files and this rule is needed at the time of cluster installation to download ignition configs while creating RHCOS VMs",
-                    "To connect API and API-Int url from all OCP nodes",
-                    "To connect *.apps from all OCP nodes",
-                    "To allow communication from cluster nodes to respective vcentre/vsphere",
-                    "To allow SSH login to all cluster nodes from bastion nodes",
-                    "For clock sync among all OCP nodes with NTP servers",
-                    "Send openshift alerts from all OCP nodes to mailbox",
-                    "To allow all communication from all nodes to all cluster nodes to forward logs",
-                    "To allow all nodes to access NFS storage",
-                    "Openshift platform authentication from AD",
-                    "SSH login to bastion nodes",
-                    "SSH login to miiror node",
-                    "To access web console of app from OCP Admin team's desktop",
-                    "For loki and quay setup"],
+        "Comment": rules,
         "Remarks": ["", "", "", "", "", "", "",  "", "", "", "", "", "", "", "", "",  "", "", "", "" ]
     }
+
+    if len(rules) != len(data["Source IP Address"]):
+        print(len(rules))
+        print(f"data field len is {len(data["Source IP Address"])}")
+        raise Exception("Please reconcile source ip field")
+    if len(rules) != len(data["User"]):
+        raise Exception("Please reconcile user field")
+    if len(rules) != len(data["Destination IP Address"]):
+        raise Exception("Please reconcile Destination IP Address field")
+    if len(rules) != len(data["Service"]):
+        raise Exception("Please reconcile Service ports field")
+    if len(rules) != len(data["Action"]):
+        raise Exception("Please reconcile Action field")
+    if len(rules) != len(data["Remarks"]):
+        raise Exception("Please reconcile Remarks field")
+    
     print(f"FAR rule data formed is {data}")
     return pd.DataFrame(data)
 
